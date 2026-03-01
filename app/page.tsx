@@ -128,6 +128,11 @@ export default function DashboardPage() {
       setIsActive(true);
       addAlert("Monitoring session started", "info", 0);
 
+      // Tell the backend which profile was selected
+      if (profile !== "normal_walk_recovery") {
+        ws.send(JSON.stringify({ action: "change_profile", profile }));
+      }
+
       timerRef.current = setInterval(() => {
         elapsedRef.current += 1;
         setElapsed((e) => e + 1);
