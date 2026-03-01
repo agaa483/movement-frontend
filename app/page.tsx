@@ -28,7 +28,7 @@ const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000/ws";
 
 export default function DashboardPage() {
   const [patientName, setPatientName] = useState("");
-  const [profile, setProfile] = useState("normal_walk_recovery");
+  const profile = "normal_walk_recovery";
   const [isActive, setIsActive] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -128,11 +128,6 @@ export default function DashboardPage() {
       setIsActive(true);
       addAlert("Monitoring session started", "info", 0);
 
-      // Tell the backend which profile was selected
-      if (profile !== "normal_walk_recovery") {
-        ws.send(JSON.stringify({ action: "change_profile", profile }));
-      }
-
       timerRef.current = setInterval(() => {
         elapsedRef.current += 1;
         setElapsed((e) => e + 1);
@@ -228,8 +223,6 @@ export default function DashboardPage() {
         <ControlPanel
           patientName={patientName}
           setPatientName={setPatientName}
-          profile={profile}
-          setProfile={setProfile}
           isConnected={isConnected}
           isActive={isActive}
           elapsed={elapsed}

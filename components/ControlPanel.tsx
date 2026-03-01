@@ -1,17 +1,8 @@
 "use client";
 
-const PROFILES = [
-  { value: "normal_walk_recovery", label: "Normal Walk Recovery" },
-  { value: "normal_run_recovery", label: "Normal Run Recovery" },
-  { value: "compensating_gait", label: "Compensating Gait" },
-  { value: "post_exercise_fatigue", label: "Post-Exercise Fatigue" },
-];
-
 interface Props {
   patientName: string;
   setPatientName: (name: string) => void;
-  profile: string;
-  setProfile: (profile: string) => void;
   isConnected: boolean;
   isActive: boolean;
   elapsed: number;
@@ -31,8 +22,6 @@ function formatElapsed(seconds: number): string {
 export default function ControlPanel({
   patientName,
   setPatientName,
-  profile,
-  setProfile,
   isConnected,
   isActive,
   elapsed,
@@ -74,25 +63,6 @@ export default function ControlPanel({
         />
       </div>
 
-      {/* Profile Selector */}
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-mono text-slate-500 uppercase tracking-wider">
-          Patient Profile
-        </label>
-        <select
-          value={profile}
-          onChange={(e) => setProfile(e.target.value)}
-          disabled={isActive}
-          className="bg-[#0a0f1c] border border-[#1e2d45] rounded px-3 py-2 text-sm font-mono text-slate-200 focus:outline-none focus:border-cyan-700 disabled:opacity-50"
-        >
-          {PROFILES.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
       {/* Timer */}
       {isActive && (
         <div className="flex flex-col gap-1">
@@ -128,12 +98,6 @@ export default function ControlPanel({
               className="w-full bg-amber-700 hover:bg-amber-600 text-white font-mono text-sm py-2 rounded transition-colors"
             >
               ⚠ Simulate Compensation
-            </button>
-            <button
-              onClick={() => onSimulate("post_exercise_fatigue")}
-              className="w-full bg-orange-800 hover:bg-orange-700 text-white font-mono text-sm py-2 rounded transition-colors"
-            >
-              ↓ Simulate Fatigue
             </button>
           </>
         )}
