@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import SessionTable, { Session } from "@/components/SessionTable";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://web-production-43f13.up.railway.app";
 
 export default function HistoryPage() {
   const [sessions, setSessions] = useState<Session[]>([]);

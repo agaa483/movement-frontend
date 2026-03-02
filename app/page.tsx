@@ -23,8 +23,8 @@ interface ChartPoint {
 }
 
 const MAX_CHART_POINTS = 60;
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000/ws";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://web-production-43f13.up.railway.app";
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "wss://web-production-43f13.up.railway.app/ws";
 
 export default function DashboardPage() {
   const [patientName, setPatientName] = useState("");
