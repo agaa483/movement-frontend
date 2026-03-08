@@ -39,6 +39,8 @@ export default function DashboardPage() {
 
   const wsRef = useRef<WebSocket | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pongTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const elapsedRef = useRef(0);
   const alertCounterRef = useRef(0);
   const metricsHistoryRef = useRef<Metrics[]>([]);
@@ -63,6 +65,8 @@ export default function DashboardPage() {
 
   const stopSession = useCallback(async (history: Metrics[], currentAlerts: AlertEntry[], currentElapsed: number, name: string, prof: string) => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+    if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
     wsRef.current?.close();
     wsRef.current = null;
     setIsActive(false);
@@ -132,10 +136,29 @@ export default function DashboardPage() {
         elapsedRef.current += 1;
         setElapsed((e) => e + 1);
       }, 1000);
+
+      // Heartbeat: ping every 30s, expect pong within 5s
+      heartbeatRef.current = setInterval(() => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ action: "ping" }));
+          pongTimeoutRef.current = setTimeout(() => {
+            console.warn("[WS] Pong timeout — connection stale, closing");
+            wsRef.current?.close();
+          }, 5000);
+        }
+      }, 30000);
     };
 
     ws.onmessage = (event) => {
-      const data: Metrics = JSON.parse(event.data);
+      const raw = JSON.parse(event.data);
+
+      // Handle pong — clear the timeout, connection is alive
+      if (raw.action === "pong") {
+        if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
+        return;
+      }
+
+      const data: Metrics = raw;
       setMetrics(data);
 
       const point: ChartPoint = {
@@ -196,6 +219,8 @@ export default function DashboardPage() {
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
       wsRef.current?.close();
     };
   }, []);
