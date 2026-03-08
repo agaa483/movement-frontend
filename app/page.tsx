@@ -41,6 +41,9 @@ export default function DashboardPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pongTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryCountRef = useRef(0);
+  const isManualCloseRef = useRef(false);
   const elapsedRef = useRef(0);
   const alertCounterRef = useRef(0);
   const metricsHistoryRef = useRef<Metrics[]>([]);
@@ -64,6 +67,8 @@ export default function DashboardPage() {
   );
 
   const stopSession = useCallback(async (history: Metrics[], currentAlerts: AlertEntry[], currentElapsed: number, name: string, prof: string) => {
+    isManualCloseRef.current = true;
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
     if (heartbeatRef.current) clearInterval(heartbeatRef.current);
     if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
@@ -116,6 +121,8 @@ export default function DashboardPage() {
 
   const startSession = useCallback(() => {
     elapsedRef.current = 0;
+    retryCountRef.current = 0;
+    isManualCloseRef.current = false;
     metricsHistoryRef.current = [];
     alertsRef.current = [];
     setElapsed(0);
@@ -124,79 +131,102 @@ export default function DashboardPage() {
     setAlerts([]);
     setMetricsHistory([]);
 
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
+    const connect = () => {
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
 
-    ws.onopen = () => {
-      setIsConnected(true);
-      setIsActive(true);
-      addAlert("Monitoring session started", "info", 0);
+      ws.onopen = () => {
+        const wasReconnect = retryCountRef.current > 0;
+        retryCountRef.current = 0;
+        setIsConnected(true);
+        setIsActive(true);
+        addAlert(
+          wasReconnect ? "Reconnected — resuming session" : "Monitoring session started",
+          "info",
+          elapsedRef.current
+        );
 
-      timerRef.current = setInterval(() => {
-        elapsedRef.current += 1;
-        setElapsed((e) => e + 1);
-      }, 1000);
-
-      // Heartbeat: ping every 30s, expect pong within 5s
-      heartbeatRef.current = setInterval(() => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ action: "ping" }));
-          pongTimeoutRef.current = setTimeout(() => {
-            console.warn("[WS] Pong timeout — connection stale, closing");
-            wsRef.current?.close();
-          }, 5000);
+        // Only start elapsed timer on first connect, not reconnects
+        if (!wasReconnect) {
+          timerRef.current = setInterval(() => {
+            elapsedRef.current += 1;
+            setElapsed((e) => e + 1);
+          }, 1000);
         }
-      }, 30000);
-    };
 
-    ws.onmessage = (event) => {
-      const raw = JSON.parse(event.data);
-
-      // Handle pong — clear the timeout, connection is alive
-      if (raw.action === "pong") {
-        if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
-        return;
-      }
-
-      const data: Metrics = raw;
-      setMetrics(data);
-
-      const point: ChartPoint = {
-        time: Math.round(elapsedRef.current),
-        mei: data.mei,
+        // Heartbeat: ping every 30s, expect pong within 5s
+        heartbeatRef.current = setInterval(() => {
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ action: "ping" }));
+            pongTimeoutRef.current = setTimeout(() => {
+              console.warn("[WS] Pong timeout — connection stale, closing");
+              wsRef.current?.close();
+            }, 5000);
+          }
+        }, 30000);
       };
 
-      setChartData((prev) => {
-        const next = [...prev, point];
-        return next.length > MAX_CHART_POINTS
-          ? next.slice(next.length - MAX_CHART_POINTS)
-          : next;
-      });
+      ws.onmessage = (event) => {
+        const raw = JSON.parse(event.data);
 
-      setMetricsHistory((prev) => {
-        const next = [...prev, data];
-        metricsHistoryRef.current = next;
-        return next;
-      });
+        // Handle pong — clear the timeout, connection is alive
+        if (raw.action === "pong") {
+          if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
+          return;
+        }
 
-      if (data.alerts.length > 0) {
-        data.alerts.forEach((msg) => {
-          const severity =
-            msg.includes("MEI") || msg.includes("Impact")
-              ? "critical"
-              : "warning";
-          addAlert(msg, severity, Math.round(elapsedRef.current));
+        const data: Metrics = raw;
+        setMetrics(data);
+
+        const point: ChartPoint = {
+          time: Math.round(elapsedRef.current),
+          mei: data.mei,
+        };
+
+        setChartData((prev) => {
+          const next = [...prev, point];
+          return next.length > MAX_CHART_POINTS
+            ? next.slice(next.length - MAX_CHART_POINTS)
+            : next;
         });
-      }
+
+        setMetricsHistory((prev) => {
+          const next = [...prev, data];
+          metricsHistoryRef.current = next;
+          return next;
+        });
+
+        if (data.alerts.length > 0) {
+          data.alerts.forEach((msg) => {
+            const severity =
+              msg.includes("MEI") || msg.includes("Impact")
+                ? "critical"
+                : "warning";
+            addAlert(msg, severity, Math.round(elapsedRef.current));
+          });
+        }
+      };
+
+      ws.onerror = () => {
+        addAlert("WebSocket error — check backend connection", "critical", elapsedRef.current);
+      };
+
+      ws.onclose = () => {
+        setIsConnected(false);
+        if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+        if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
+        // Exponential backoff reconnect — only if session wasn't manually stopped
+        if (!isManualCloseRef.current) {
+          const delay = Math.min(Math.pow(2, retryCountRef.current) * 1000, 30000);
+          const delaySec = Math.round(delay / 1000);
+          retryCountRef.current += 1;
+          addAlert(`Connection lost — reconnecting in ${delaySec}s…`, "warning", elapsedRef.current);
+          reconnectTimerRef.current = setTimeout(connect, delay);
+        }
+      };
     };
 
-    ws.onerror = () => {
-      addAlert("WebSocket error — check backend connection", "critical", elapsedRef.current);
-    };
-
-    ws.onclose = () => {
-      setIsConnected(false);
-    };
+    connect();
   }, [addAlert]);
 
   const handleStop = useCallback(() => {
@@ -218,9 +248,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     return () => {
+      isManualCloseRef.current = true;
       if (timerRef.current) clearInterval(timerRef.current);
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       wsRef.current?.close();
     };
   }, []);
