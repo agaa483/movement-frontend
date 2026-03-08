@@ -132,6 +132,9 @@ export default function DashboardPage() {
       setIsActive(true);
       addAlert("Monitoring session started", "info", 0);
 
+      // Send patient name to backend for email alerts
+      ws.send(JSON.stringify({ action: "set_patient", name: patientName }));
+
       timerRef.current = setInterval(() => {
         elapsedRef.current += 1;
         setElapsed((e) => e + 1);
