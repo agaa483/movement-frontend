@@ -161,6 +161,12 @@ export default function DashboardPage() {
         return;
       }
 
+      // Email alert confirmation from backend
+      if (raw.action === "email_sent") {
+        addAlert(`📧 Email alert sent to ${raw.email}`, "critical", Math.round(elapsedRef.current));
+        return;
+      }
+
       const data: Metrics = raw;
       setMetrics(data);
 
