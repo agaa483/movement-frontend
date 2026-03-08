@@ -132,9 +132,6 @@ export default function DashboardPage() {
       setIsActive(true);
       addAlert("Monitoring session started", "info", 0);
 
-      // Send patient name to backend for email alerts
-      ws.send(JSON.stringify({ action: "set_patient", name: patientName }));
-
       timerRef.current = setInterval(() => {
         elapsedRef.current += 1;
         setElapsed((e) => e + 1);
@@ -158,12 +155,6 @@ export default function DashboardPage() {
       // Handle pong — clear the timeout, connection is alive
       if (raw.action === "pong") {
         if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
-        return;
-      }
-
-      // Email alert confirmation from backend
-      if (raw.action === "email_sent") {
-        addAlert(`📧 Email alert sent to ${raw.email}`, "critical", Math.round(elapsedRef.current));
         return;
       }
 
